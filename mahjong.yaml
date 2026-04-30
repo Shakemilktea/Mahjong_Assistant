@@ -1,0 +1,40 @@
+path: D:\workspace\AI_training_project\MahjongSoul_cheater\MahjongSoul_screenshot\datasets\dataset
+
+train: images/train
+val: images/val
+
+names:
+  0: m1
+  1: m2
+  2: m3
+  3: m4
+  4: m5
+  5: m6
+  6: m7
+  7: m8
+  8: m9
+  9: p1
+  10: p2
+  11: p3
+  12: p4
+  13: p5
+  14: p6
+  15: p7
+  16: p8
+  17: p9
+  18: s1
+  19: s2
+  20: s3
+  21: s4
+  22: s5
+  23: s6
+  24: s7
+  25: s8
+  26: s9
+  27: z1
+  28: z2
+  29: z3
+  30: z4
+  31: z5
+  32: z6
+  33: z7
