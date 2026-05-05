@@ -1,2 +1,9 @@
 runs/
 MahjongSoul_screenshot/
+
+__pycache__/
+
+test.py
+
+yolov26n.pt
+yolov8n.pt

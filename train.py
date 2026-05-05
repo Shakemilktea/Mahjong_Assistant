@@ -11,7 +11,7 @@ model.train(
     pretrained=True
 )
 
-# model = YOLO("runs/detect/train/weights/best.pt")
+# model = YOLO("runs/detect/best_train/weights/best.pt")
 #
 # model.train(
 #     data="mahjong.yaml",

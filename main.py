@@ -1,7 +1,11 @@
 from mahjong.shanten import Shanten
 from mahjong.tile import TilesConverter
+from scipy._lib.pyprima.common import message
 from ultralytics import YOLO
 import cv2
+import mss
+import numpy as np
+import tkinter as tk
 
 def compute_iou(box1, box2):
     x1_min, y1_min, x1_max, y1_max = box1
@@ -57,7 +61,7 @@ def count_visible_tiles(detections, class_names):
     return visible_counts
 
 # 偵測手牌(含吃碰槓)
-def filter_hand_tiles(detections, x_threshold=0.125, y_threshold=0.8):
+def filter_hand_tiles(detections, x_threshold=0.125, y_threshold=0.75):
     hand_tiles = []
     for detection in detections:
         x1, y1, x2, y2 = detection["box"]
@@ -182,55 +186,90 @@ def waiting_tiles(sorted_tiles, class_names, visible_counts=None):
 
     return waits
 
+def screenshot_screen():
+    with mss.MSS() as sct:
+        monitor = sct.monitors[1]
+        img = np.array(sct.grab(monitor))
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+def analyze_screen():
+    frame = screenshot_screen()
+    global image_height, image_width
+    image_height, image_width, _ = frame.shape
+    print(image_height, image_width)
+
+    results = model.predict(
+        source=frame,
+        save=False,
+        conf=0.5
+    )
+
+    # 偵測看的見的所有牌
+    filtered_tiles = [detection for r in results for detection in remove_overlapping_boxes(r.boxes)]
+    visible_counts = count_visible_tiles(filtered_tiles, class_names)
+
+    # 偵測手牌
+    hand_tiles = filter_hand_tiles(filtered_tiles)
+    sorted_tiles = sort_tiles(hand_tiles, class_names)
+
+    if len(sorted_tiles) == 14:
+        best_candidates, candidates = suggest_discard(
+            sorted_tiles,
+            class_names,
+            visible_counts=visible_counts
+        )
+        # print("discard candidates:")
+        # for candidate in candidates:
+        #     print(
+        #         candidate["discard"],
+        #         "shanten:", candidate["shanten"],
+        #         "ukeire:", candidate["ukeire"],
+        #         "waits:", candidate["waits"],
+        #     )
+        # print("best discards:")
+        for candidate in best_candidates:
+            message = "建議打： %s" % candidate["discard"]
+            # print(
+            #     candidate["discard"],
+            #     "shanten:", candidate["shanten"],
+            #     "ukeire:", candidate["ukeire"],
+            #     "waits:", candidate["waits"],
+            # )
+    elif len(sorted_tiles) == 13:
+        # print("waiting tiles:")
+        # print(waiting_tiles(sorted_tiles, class_names, visible_counts=visible_counts))
+        message = "%s" % waiting_tiles(sorted_tiles, class_names, visible_counts=visible_counts)
+    else:
+        # print("Sorted tiles = %d, detected failed." % len(sorted_tiles))
+        message = "Sorted tiles = %d, detected failed." % len(sorted_tiles)
+    label.config(text=message)
+
+    # 500 ms 後再執行一次 analyze_screen
+    root.after(500, analyze_screen)
 
 # ===== 設定 =====
-image_dir = "MahjongSoul_screenshot/non_label/132824.png"     # 未標註圖片資料夾
-img = cv2.imread(image_dir)
-if img is None:
-    raise FileNotFoundError(f"Cannot read image: {image_dir}")
-image_height, image_width, _ = img.shape  # 高, 寬, 通道數
+# image_dir = "MahjongSoul_screenshot/non_label/04162322.png"     # 未標註圖片資料夾
+# img = cv2.imread(image_dir)
+# if img is None:
+#     raise FileNotFoundError(f"Cannot read image: {image_dir}")
+# image_height, image_width, _ = img.shape  # 高, 寬, 通道數
 with open('classes.txt', 'r', encoding='utf-8') as file:
     class_names = [line.strip() for line in file.readlines()]
 model = YOLO("runs/detect/best_train/weights/best.pt")
 
-results = model.predict(
-    source=image_dir,
-    save=False,
-    conf=0.5
+# 主程式
+root = tk.Tk()
+root.attributes("-topmost", True)
+root.geometry("900x60")
+
+label = tk.Label(
+    root,
+    text="偵測中...",
+    font=("Microsoft JhengHei", 20),
+    bg="black",
+    fg="white"
 )
+label.pack(fill="both", expand=True)
 
-# 偵測看的見的所有牌
-filtered_tiles = [detection for r in results for detection in remove_overlapping_boxes(r.boxes)]
-visible_counts = count_visible_tiles(filtered_tiles, class_names)
-
-# 偵測手牌
-hand_tiles = filter_hand_tiles(filtered_tiles)
-sorted_tiles = sort_tiles(hand_tiles, class_names)
-
-if len(sorted_tiles) == 14:
-    best_candidates, candidates = suggest_discard(
-        sorted_tiles,
-        class_names,
-        visible_counts=visible_counts
-    )
-    print("discard candidates:")
-    for candidate in candidates:
-        print(
-            candidate["discard"],
-            "shanten:", candidate["shanten"],
-            "ukeire:", candidate["ukeire"],
-            "waits:", candidate["waits"],
-        )
-    print("best discards:")
-    for candidate in best_candidates:
-        print(
-            candidate["discard"],
-            "shanten:", candidate["shanten"],
-            "ukeire:", candidate["ukeire"],
-            "waits:", candidate["waits"],
-        )
-elif len(sorted_tiles) == 13:
-    print("waiting tiles:")
-    print(waiting_tiles(sorted_tiles, class_names, visible_counts=visible_counts))
-else:
-    print("Sorted tiles = %d, detected failed." % len(sorted_tiles))
+analyze_screen()
+root.mainloop()
