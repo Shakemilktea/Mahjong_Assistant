@@ -7,21 +7,8 @@ import mss
 import numpy as np
 import tkinter as tk
 from PIL import Image, ImageTk
-
-TILE_IMAGE_DIR = "MahjongSoul_screenshot/mahjong_template"
-TILE_IMAGE_SIZE = (23, 30)
-GAME_WINDOW_TITLE_KEYWORDS = ("雀魂", "MahjongSoul")
-ANALYZE_INTERVAL_MS = 500
-UI_HIGHT = 250
-UI_WIDTH = 1000
-UI_BG = "#050505"
-UI_FG = "#f4f4f5"
-UI_MUTED_FG = "#a1a1aa"
-UI_FONT = ("Microsoft JhengHei", 16)
-UI_SMALL_FONT = ("Microsoft JhengHei", 12)
-TILE_CELL_WIDTH = 28
-TILE_CELL_HEIGHT = 48
-TILE_CELL_PADX = 1
+import os
+import sys
 
 user32 = ctypes.windll.user32
 
@@ -40,6 +27,9 @@ class POINT(ctypes.Structure):
     ]
 
 def find_window_by_title(keywords):
+    # 找出所有可見Windows視窗
+    # 比較keyword
+    # 再把matches的視窗回傳
     matches = []
 
     def enum_callback(hwnd, _):
@@ -164,6 +154,7 @@ def sort_tiles(hand_tiles, class_names):
     ]
 
 def convert_hand(hand):
+    # 轉換格式為長度34的list
     man = ''
     pin = ''
     sou = ''
@@ -184,9 +175,8 @@ def convert_hand(hand):
     )
 
 def calculate_ukeire(after_discard, class_names, visible_counts=None):
-    shanten = Shanten()
     tiles_34 = convert_hand(after_discard)
-    base_shanten = shanten.calculate_shanten(tiles_34)
+    base_shanten = SHANTEN.calculate_shanten(tiles_34)
 
     if visible_counts is None:
         visible_counts = tiles_34
@@ -201,7 +191,7 @@ def calculate_ukeire(after_discard, class_names, visible_counts=None):
         test_tiles = tiles_34[:]
         test_tiles[tile_id] += 1
 
-        if shanten.calculate_shanten(test_tiles) < base_shanten:
+        if SHANTEN.calculate_shanten(test_tiles) < base_shanten:
             remaining = 4 - visible_counts[tile_id]
             ukeire_count += remaining
             waits.append((tile_name, remaining))
@@ -209,7 +199,6 @@ def calculate_ukeire(after_discard, class_names, visible_counts=None):
     return ukeire_count, waits
 
 def suggest_discard(hand, class_names, visible_counts=None):
-    shanten = Shanten()
     if visible_counts is None:
         visible_counts = convert_hand(hand)
 
@@ -225,7 +214,7 @@ def suggest_discard(hand, class_names, visible_counts=None):
         test_hand.remove(tile)
 
         tiles_34 = convert_hand(test_hand)
-        score = shanten.calculate_shanten(tiles_34)
+        score = SHANTEN.calculate_shanten(tiles_34)
         ukeire_count, waits = calculate_ukeire(
             test_hand,
             class_names,
@@ -250,32 +239,18 @@ def suggest_discard(hand, class_names, visible_counts=None):
     ]
     return best_candidates, candidates
 
-def waiting_tiles(sorted_tiles, class_names, visible_counts=None):
-    shanten = Shanten()
-    tiles_34 = convert_hand(sorted_tiles)
-    base_shanten = shanten.calculate_shanten(tiles_34)
-    if visible_counts is None:
-        visible_counts = tiles_34
+def get_game_window():
+    global game_hwnd
 
-    ukeire_count = 0
-    waits = []
-    for tile_id, tile_name in enumerate(class_names):
-        if visible_counts[tile_id] >= 4:
-            continue
+    if game_hwnd and user32.IsWindow(game_hwnd):
+        return game_hwnd
 
-        test_tiles = tiles_34[:]
-        test_tiles[tile_id] += 1
-
-        if shanten.calculate_shanten(test_tiles) < base_shanten:
-            remaining = 4 - visible_counts[tile_id]
-            waits.append((tile_name, remaining))
-            ukeire_count += remaining
-
-    return waits, ukeire_count
+    game_hwnd = find_window_by_title(GAME_WINDOW_TITLE_KEYWORDS)
+    return game_hwnd
 
 def screenshot_screen():
     with mss.MSS() as sct:
-        hwnd = find_window_by_title(GAME_WINDOW_TITLE_KEYWORDS)
+        hwnd = get_game_window()
         if hwnd and user32.IsIconic(hwnd):
             return None
 
@@ -290,16 +265,16 @@ def load_tile_images(class_names):
     tile_images = {}
     for tile_name in class_names:
         image_path = f"{TILE_IMAGE_DIR}/{tile_name}.png"
-        image = Image.open(image_path)
-        image = image.resize(TILE_IMAGE_SIZE, Image.Resampling.LANCZOS)
-        tile_images[tile_name] = ImageTk.PhotoImage(image)
+        with Image.open(image_path) as image:
+            resized_image = image.resize(TILE_IMAGE_SIZE, Image.Resampling.LANCZOS)
+        tile_images[tile_name] = ImageTk.PhotoImage(resized_image)
     return tile_images
 
 def clear_result_frame():
     for child in result_frame.winfo_children():
         child.destroy()
 
-def make_recommendation_key(discard_tiles=None, waits=None, ukeire=None, candidate_rows=None, status=None):
+def make_recommendation_key(waits=None, ukeire=None, candidate_rows=None, status=None):
     if status:
         return ("status", status)
 
@@ -318,18 +293,9 @@ def make_recommendation_key(discard_tiles=None, waits=None, ukeire=None, candida
 
     return (
         "single",
-        tuple(discard_tiles or []),
         tuple(waits or []),
         ukeire,
     )
-
-def add_tile(parent, tile_name):
-    image = tile_images.get(tile_name)
-    if image is None:
-        tk.Label(parent, text=tile_name, font=UI_FONT, bg=UI_BG, fg=UI_FG).pack(side="left", padx=3)
-        return
-
-    tk.Label(parent, image=image, bg=UI_BG).pack(side="left", padx=3)
 
 def add_tile_cell(parent, tile_name, count=None):
     cell = tk.Frame(parent, bg=UI_BG, width=TILE_CELL_WIDTH, height=TILE_CELL_HEIGHT)
@@ -367,10 +333,9 @@ def add_candidate_row(discard_tile=None, waits=None, ukeire=None):
     if ukeire is not None:
         tk.Label(row_frame, text=f"{ukeire}張", font=UI_FONT, bg=UI_BG, fg=UI_FG).pack(side="left", padx=(0, 8), pady=(0, 14))
 
-def show_recommendation(discard_tiles=None, waits=None, ukeire=None, candidate_rows=None, status=None):
+def show_recommendation(waits=None, ukeire=None, candidate_rows=None, status=None):
     global last_recommendation_key
     recommendation_key = make_recommendation_key(
-        discard_tiles=discard_tiles,
         waits=waits,
         ukeire=ukeire,
         candidate_rows=candidate_rows,
@@ -395,12 +360,7 @@ def show_recommendation(discard_tiles=None, waits=None, ukeire=None, candidate_r
             )
         return
 
-    discard_tiles = discard_tiles or []
-    if discard_tiles:
-        for discard_tile in discard_tiles:
-            add_candidate_row(discard_tile=discard_tile, waits=waits, ukeire=ukeire)
-    else:
-        add_candidate_row(waits=waits, ukeire=ukeire)
+    add_candidate_row(waits=waits, ukeire=ukeire)
 
 def analyze_screen():
     try:
@@ -419,54 +379,77 @@ def analyze_screen():
             verbose=False
         )
 
-        # 偵測看的見的所有牌
         filtered_tiles = [detection for r in results for detection in remove_overlapping_boxes(r.boxes)]
+
+        # 偵測看的見的所有牌
         visible_counts = count_visible_tiles(filtered_tiles, class_names)
 
         # 偵測手牌
-        hand_tiles = filter_hand_tiles(filtered_tiles)
-        sorted_tiles = sort_tiles(hand_tiles, class_names)
+        hand_tiles = sort_tiles(filter_hand_tiles(filtered_tiles), class_names)
 
-        if len(sorted_tiles) == 14:
-            best_candidates, candidates = suggest_discard(
-                sorted_tiles,
+        if len(hand_tiles) == 14:
+            best_candidates, _ = suggest_discard(
+                hand_tiles,
                 class_names,
                 visible_counts=visible_counts
             )
             show_recommendation(candidate_rows=best_candidates)
-        elif len(sorted_tiles) == 13:
-            wait, ukeire_count = waiting_tiles(sorted_tiles, class_names, visible_counts=visible_counts)
+        elif len(hand_tiles) == 13:
+            ukeire_count, wait = calculate_ukeire(hand_tiles, class_names, visible_counts=visible_counts)
             show_recommendation(
                 waits=wait,
                 ukeire=ukeire_count,
             )
         else:
-            show_recommendation(status="偵測到 %d 張，請確認畫面" % len(sorted_tiles))
+            show_recommendation(status="偵測到 %d 張，請確認畫面" % len(hand_tiles))
     except Exception as exc:
         show_recommendation(status="截圖或辨識失敗，等待下一次重試: %s" % exc)
     finally:
-        # 500 ms 後再執行一次 analyze_screen
+        # 幾毫秒後再執行一次 analyze_screen
         root.after(ANALYZE_INTERVAL_MS, analyze_screen)
 
+def resource_path(relative_path):
+    # For both EXE and Python execution
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+# ===== 參數 =====
+TILE_IMAGE_DIR = resource_path("MahjongSoul_screenshot/mahjong_template")
+TILE_IMAGE_SIZE = (32, 40)
+GAME_WINDOW_TITLE_KEYWORDS = ("雀魂", "MahjongSoul")
+ANALYZE_INTERVAL_MS = 500 #幾毫秒辨識一次
+UI_HEIGHT = 250
+UI_WIDTH = 1000
+UI_BG = "#2f3136"
+UI_FG = "#f4f4f5"
+UI_MUTED_FG = "#a1a1aa"
+UI_FONT = ("Microsoft JhengHei", 16)
+UI_SMALL_FONT = ("Microsoft JhengHei", 12)
+TILE_CELL_WIDTH = 28
+TILE_CELL_HEIGHT = TILE_IMAGE_SIZE[1] + 20
+TILE_CELL_PADX = 1
+SHANTEN = Shanten()
+last_recommendation_key = None
+game_hwnd = None
+
 # ===== 設定 =====
-# image_dir = "MahjongSoul_screenshot/non_label/04162322.png"     # 未標註圖片資料夾
-# img = cv2.imread(image_dir)
-# if img is None:
-#     raise FileNotFoundError(f"Cannot read image: {image_dir}")
-# image_height, image_width, _ = img.shape  # 高, 寬, 通道數
-with open('classes.txt', 'r', encoding='utf-8') as file:
+with open(resource_path("classes.txt"), 'r', encoding='utf-8') as file:
     class_names = [line.strip() for line in file.readlines()]
-model = YOLO("runs/detect/best_train/weights/best.pt")
+model = YOLO(resource_path("runs/detect/best_train/weights/best.pt"))
 
 # 主程式
 root = tk.Tk()
-root.attributes("-topmost", True)
-root.geometry(f"{UI_WIDTH}x{UI_HIGHT}+0+0")
+root.title("Mahjong Assistant")
+root.configure(bg=UI_BG)
+root.geometry(f"{UI_WIDTH}x{UI_HEIGHT}+0+0")
 
 result_frame = tk.Frame(root, bg=UI_BG)
 result_frame.pack(fill="both", expand=True)
 
-last_recommendation_key = None
 tile_images = load_tile_images(class_names)
 show_recommendation(status="偵測中...")
 

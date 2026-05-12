@@ -1,9 +1,20 @@
-runs/
-MahjongSoul_screenshot/
-
+# Python
 __pycache__/
 
-test.py
+# PyInstaller
+build/
+dist/
+*.spec
 
+# model cache
+runs/
+
+# data
+MahjongSoul_screenshot/
+
+# weight
 yolov26n.pt
 yolov8n.pt
+
+# other
+test.py
