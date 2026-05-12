@@ -13,8 +13,7 @@ runs/
 MahjongSoul_screenshot/
 
 # weight
-yolov26n.pt
-yolov8n.pt
+*.pt
 
 # other
 test.py
