@@ -52,7 +52,7 @@ GUI Recommendation Display
 ## Installation
 
 ```bash
-git clone <repository_url>
+git clone https://github.com/Shakemilktea/Mahjong_Assistant.git
 cd MahjongSoul_assistant
 pip install -r requirements.txt
 ```
