@@ -144,14 +144,27 @@ def filter_hand_tiles(detections, x_threshold=0.125, y_threshold=0.75):
 
         # 假設手牌在畫面下方
         if y1 > (image_height * y_threshold) and x1 > (image_width * x_threshold):
-            hand_tiles.append((int(cls), x1))
+            hand_tiles.append((int(cls), x1, x2))
     return hand_tiles
 
-def sort_tiles(hand_tiles, class_names):
-    return [
-        class_names[cls]
-        for cls, _ in sorted(hand_tiles, key=lambda tile: tile[1])
-    ]
+def sort_tiles(self_tiles, class_names):
+    if not self_tiles:
+        return []
+    sorted_tiles = sorted(self_tiles, key=lambda tile: tile[1])
+
+    hand_tiles = [class_names[sorted_tiles[0][0]]]
+    prev_tile = sorted_tiles[0]
+
+    for tile in sorted_tiles[1:]:
+        gap = max(0, tile[1] - prev_tile[2])
+        curr_width = prev_tile[2] - prev_tile[1]
+        if gap <= curr_width:
+            hand_tiles.append(class_names[tile[0]])
+            prev_tile = tile
+        else:
+            break
+
+    return hand_tiles
 
 def convert_hand(hand):
     # 轉換格式為長度34的list
@@ -387,14 +400,14 @@ def analyze_screen():
         # 偵測手牌
         hand_tiles = sort_tiles(filter_hand_tiles(filtered_tiles), class_names)
 
-        if len(hand_tiles) == 14:
+        if (len(hand_tiles) - 2) % 3 == 0:
             best_candidates, _ = suggest_discard(
                 hand_tiles,
                 class_names,
                 visible_counts=visible_counts
             )
             show_recommendation(candidate_rows=best_candidates)
-        elif len(hand_tiles) == 13:
+        elif (len(hand_tiles) - 1) % 3 == 0:
             ukeire_count, wait = calculate_ukeire(hand_tiles, class_names, visible_counts=visible_counts)
             show_recommendation(
                 waits=wait,
